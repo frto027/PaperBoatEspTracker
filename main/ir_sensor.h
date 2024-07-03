@@ -11,6 +11,15 @@ enum sensor_waiting_stage{
     swait_waiting_for_scan_down_and_has_next_info
 };
 
+struct axis_value{
+    // int v;
+    int count;
+    int __padding__;
+    struct{
+        int start,width;
+    }values[3];
+};
+
 struct ir_sensor_config_t {
     int id;
     gpio_num_t E_pin;
@@ -24,8 +33,8 @@ struct ir_sensor_config_t {
     int axis_distance_left; // L->H time delta
 
     struct station_axis_info{
-        int axis[2];
-    } axis_info[4];
+        struct axis_value axis[2/*x or y*/];
+    } axis_info[2/*station id*/], last_axis_info[2];
 
     // int hori_delta;
     // int upward_distance[3];
@@ -41,6 +50,8 @@ struct ir_sensor_config_t {
     bool configured;
     
     bool current_status;
+
+    bool has_new_data;
 };
 
 typedef struct ir_sensor_config_t ir_sensor_config_t;

@@ -6,6 +6,7 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 #include "cc.h"
@@ -491,17 +492,17 @@ void sensor_read_task(void *){
     // }
 }
 
-void inform_data_changed(){
-    uint64_t payload[12];
-    for(int i=0;i<3;i++){
-        for(int j=0;j<2;j++){
-            for(int k=0;k<2;k++){
-                payload[i*4 + j*2 + k] = sensors[i].axis_info[j].axis[k];
-            }
-        }
-    }
-    sendto(m_socket, payload, sizeof(payload), 0, &dest_addr, sizeof(dest_addr));
+struct udp_payload_t{
+    struct station_axis_info sensor_payload[SENSORS_COUNT][2];
+};
 
+void inform_data_changed(){
+    struct udp_payload_t payload;
+    assert(sizeof(payload.sensor_payload[0]) == sizeof(sensors[0].last_axis_info));
+    for(int i=0;i<SENSORS_COUNT;i++){
+        memcpy(payload.sensor_payload[i], sensors[i].last_axis_info, sizeof(payload.sensor_payload[0]));
+    }
+    sendto(m_socket, &payload, sizeof(payload), 0, (const struct sockaddr*)&dest_addr, sizeof(dest_addr));
 }
 
 void sensor_handle_timer_task(TimerHandle_t xTimer){
@@ -536,7 +537,6 @@ void sensor_handle_timer_task(TimerHandle_t xTimer){
                     case swait_waiting_for_scan_and_has_next_info:
                         sensor->axis_distance_left = s->timestamp - sensor->last_upward_tick_us_mul;
                         sensor->stage = swait_waiting_for_scan_down_and_has_next_info;
-                        inform_data_changed();
                         break;
                     case swait_waiting_for_scan_down_and_has_next_info:
                         //impossible
@@ -577,6 +577,9 @@ void sensor_handle_timer_task(TimerHandle_t xTimer){
                             sensor->stage = swait_waiting_for_scan_and_has_next_info;
                             sensor->next_station_id = station_idx;
                             sensor->next_axis = axis;
+                            memcpy(&sensor->last_axis_info, &sensor->axis_info, sizeof(sensor->axis_info));
+                            sensor->axis_info[station_idx].axis[axis].count = 0;
+
                             handle_ootx(data);
                         }else{
                             sensor->stage = swait_none;
@@ -588,7 +591,14 @@ void sensor_handle_timer_task(TimerHandle_t xTimer){
                         break;
                     case swait_waiting_for_scan_down_and_has_next_info:
                         int axis_distance_right = s->timestamp - sensor->last_upward_tick_us_mul;
-                        sensor->axis_info[sensor->next_station_id].axis[sensor->next_axis] = (sensor->axis_distance_left + axis_distance_right)/2;
+                        // sensor->axis_info[sensor->next_station_id].axis[sensor->next_axis] = (sensor->axis_distance_left + axis_distance_right)/2;
+                        struct axis_value * axis = &sensor->axis_info[sensor->next_station_id].axis[sensor->next_axis];
+                        if(axis->count < sizeof(axis->values) / sizeof(*(axis->values))){
+                            axis->values[axis->count].start = sensor->axis_distance_left;
+                            axis->values[axis->count].width = axis_distance_right - sensor->axis_distance_left;
+                            axis->count++;
+                            sensor->has_new_data = true;
+                        }
                         sensor->stage = swait_waiting_for_scan_and_has_next_info;
                         break;
                 }
@@ -603,7 +613,10 @@ void sensor_handle_timer_task(TimerHandle_t xTimer){
                     ss->last_upward_tick_us_mul = s->timestamp;
                     ss->stage = swait_syncing_high;
                 }
+
+                memcpy(&ss->last_axis_info, &ss->axis_info, sizeof(ss->last_axis_info));
             }
+            inform_data_changed();
         }
         sensor_event_queue_head++;
     }

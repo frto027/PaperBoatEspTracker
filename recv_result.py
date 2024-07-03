@@ -30,60 +30,72 @@ dx = 0
 dy = 0
 scale = 1
 
+STATION_COUNT = 2
+AXIS_COUNT = 2
+AXIS_VALUE_COUNT = 3
+
+class Payload:
+    def __init__(self, payload:bytes) -> None:
+        assert(len(payload) % (STATION_COUNT * AXIS_COUNT * (8+ 8 * (AXIS_VALUE_COUNT))) == 0)
+        self.payload = payload
+    def sensor_count(self)-> int:
+        return len(self.payload) // (STATION_COUNT*AXIS_COUNT* (8+ 8 * (AXIS_VALUE_COUNT)))
+    def get_axis(self, sensor_id, axis) -> list[tuple[int,int]]: # tuple[start, width]
+        ary = self.payload[sensor_id * AXIS_COUNT * (8+ 8 * (AXIS_VALUE_COUNT)) + axis * (8+ 8 * (AXIS_VALUE_COUNT)):]
+        ary = ary[:8 + 8 * AXIS_VALUE_COUNT]
+        (count,) = struct.unpack("@i", ary[:4])
+        ret = []
+        for i in range(count):
+            ret.append(struct.unpack("@ii", ary[4+4+i*8:4+4+i*8+8]))
+        print(ret, sensor_id, axis,ary)
+        return ret
+
+GSCALE = 800/40/8333
 while True:
     data, addr = s.recvfrom(1024)
 
-    frame_dropper += 1
-    if frame_dropper < 10:
-        continue
-    else:
-        frame_dropper = 0
+    # frame_dropper += 1
+    # if frame_dropper < 10:
+    #     continue
+    # else:
+    #     frame_dropper = 0
+    
+    payload = Payload(data)
 
-    if len(data) % (4*8) == 0:
-        sensor_count = len(data)//(4*8)
-        for sub_sensor in range(sensor_count):
-            (mh,mv,sh,sv) = struct.unpack("@QQQQ",data[sub_sensor * 4 * 8:(sub_sensor+1)*4*8])
-            sensors[sub_sensor] = (mh,mv,sh,sv)
+    sensor_count = payload.sensor_count()
 
+    img = np.zeros((800,800,3))
+    for sensor_id in range(sensor_count):
+        # print(sensor_id)
+        mhs = payload.get_axis(sensor_id, 0)
+        mvs = payload.get_axis(sensor_id, 1)
 
+        for (hstart, hwidth) in mhs:
+            for (vstart, vwidth) in mvs:
+                cv2.rectangle(img,
+                                [int((-dx + hstart) * scale * GSCALE), int((-dy + vstart)*scale * GSCALE)],
+                                [int((-dx + hstart+hwidth)*scale * GSCALE), int((-dy + vstart+vwidth)*scale * GSCALE)],
+                                colors[sensor_id % len(colors)]
+                                )
 
-        img = np.zeros((800,800,3))
-        idx = 0
-        for mh,mv,sh,sv in sensors:
-            (x,y) = (mh*800/40/8333,mv*800/40/8333)
+    # print("",end='\r')
 
-            x = x - dx
-            y = y - dy
-
-            x *= scale
-            y *= scale
-            # x = x * 10
-            # y = y * 10
-
-            # print("% 6.3f % 6.3f % 6.3f % 6.3f(%6.3f %6.3f)" %(mh/40,mv/40,sh/40,sv/40, x,y), end=' ')
-            x=int(x)
-            y=int(y)
-            cv2.circle(img, (x,800-y), 5, colors[idx % len(colors)])
-            idx += 1
-
-        # print("",end='\r')
-
-        cv2.imshow('preview', img)
-        k = cv2.waitKey(1)
-        if k != -1:
-            if k == 119:#w
-                dy -= 20
-            if k == 115:#s
-                dy += 20
-            if k == 97:#a
-                dx -= 20
-            if k == 100:#d
-                dx += 20
-            if k == 113:#q
-                scale = scale - 1
-                if scale < 1:
-                    scale = 1
-            if k == 101:#e
-                scale = scale + 1
-            # print(k)
+    cv2.imshow('preview', img)
+    k = cv2.waitKey(1)
+    if k != -1:
+        if k == 119:#w
+            dy -= 20
+        if k == 115:#s
+            dy += 20
+        if k == 97:#a
+            dx -= 20
+        if k == 100:#d
+            dx += 20
+        if k == 113:#q
+            scale = scale - 1
+            if scale < 1:
+                scale = 1
+        if k == 101:#e
+            scale = scale + 1
+        # print(k)
 

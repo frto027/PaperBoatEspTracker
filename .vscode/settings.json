@@ -9,6 +9,6 @@
     "ts4231.h": "c",
     "ir_sensor.h": "c"
   },
-  "idf.portWin": "COM5",
+  "idf.portWin": "COM11",
   "idf.flashType": "UART"
 }
