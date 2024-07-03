@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        
+    </head>
+    <body>
+        <div style="width: 800px; height: 800px;">
+            <div id="indicator"></div>
+            <div style="width: 10px; height: 10px; background-color: green;" id="cursor"></div>
+        </div>
+        <script>
+            var indicator = document.getElementById("indicator")
+            var cursor = document.getElementById("cursor")
+            function updateData(){
+                let r = new XMLHttpRequest()
+                r.open("GET","/data")
+                r.onload = function(e){
+                    let result = JSON.parse(r.response)
+                    
+                    let x = result.sensor[0][0] * 800 / 40 / 8333
+                    let y = result.sensor[0][1] * 800 / 40 / 8333
+                    indicator.innerText = `${result.sensor[0][0]/40}, ${result.sensor[0][1]/40}`
+                    cursor.style.transform = 'translate(' + x + "px," + y + "px)"
+
+                    setTimeout(updateData, 50)
+                }
+                r.send()
+            }
+            updateData()
+        </script>
+    </body>
+</html>
